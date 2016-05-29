@@ -30,6 +30,7 @@ import os
 import re
 import shlex
 import subprocess
+import sys
 import ConfigParser
 
 from Common import _, autostart_path
@@ -485,7 +486,14 @@ def is_broken_xdg_desktop(pathname):
     return False
 
 
-def is_running(exename):
+def is_running_darwin(exename):
+    processess = (re.split(r"\s+", p, 10)[10] for p in
+        subprocess.check_output(["ps", "aux", "-c"]).split("\n") if p != "")
+    next(processess)  # drop the header
+    return exename in processess
+
+
+def is_running_linux(exename):
     """Check whether exename is running"""
     for filename in glob.iglob("/proc/*/exe"):
         try:
@@ -500,6 +508,16 @@ def is_running(exename):
         if exename == os.path.basename(target):
             return True
     return False
+
+
+def is_running(exename):
+    """Check whether exename is running"""
+    if 'linux' == sys.platform:
+        return is_running_linux(exename)
+    elif 'darwin' == sys.platform:
+        return is_running_darwin(exename)
+    else:
+        raise RuntimeError('unsupported platform for physical_free()')
 
 
 def rotated_logs():
