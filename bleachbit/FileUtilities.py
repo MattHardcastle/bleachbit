@@ -49,6 +49,36 @@ if 'posix' == os.name:
     from General import WindowsError
 
 
+def open_files_linux():
+    return glob.iglob("/proc/*/fd/*")
+
+
+def open_files_lsof():
+    import subprocess
+    files = subprocess.check_output(["lsof", "-Fn", "-n"]).split("\n")
+    for f in files:
+        if f.startswith('n/'):
+            yield f[1:]  # Drop lsof's "n"
+
+
+def open_files():
+    if 'linux' == sys.platform:
+        files = open_files_linux()
+    elif 'darwin' == sys.platform:
+        files = open_files_lsof()
+    else:
+        raise RuntimeError('unsupported platform for open_files()')
+    for filename in files:
+        try:
+            target = os.path.realpath(filename)
+        except TypeError:
+            # happens, for example, when link points to
+            # '/etc/password\x00 (deleted)'
+            continue
+        else:
+            yield target
+
+
 class OpenFiles:
 
     """Cached way to determine whether a file is open by active process"""
@@ -67,22 +97,16 @@ class OpenFiles:
         """Update cache"""
         self.last_scan_time = time.time()
         self.files = []
-        for filename in glob.iglob("/proc/*/fd/*"):
-            try:
-                target = os.path.realpath(filename)
-            except TypeError:
-                # happens, for example, when link points to
-                # '/etc/password\x00 (deleted)'
-                continue
-            if self.file_qualifies(target):
-                self.files.append(target)
+        for filename in open_files():
+            if self.file_qualifies(filename):
+                self.files.append(filename)
 
     def is_open(self, filename):
         """Return boolean whether filename is open by running process"""
         if None == self.last_scan_time or (time.time() -
                                            self.last_scan_time) > 10:
             self.scan()
-        return filename in self.files
+        return os.path.realpath(filename) in self.files
 
 
 def __random_string(length):
