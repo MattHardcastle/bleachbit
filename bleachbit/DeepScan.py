@@ -30,16 +30,19 @@ import sys
 import unicodedata
 
 
-def normalize_filename(fn):
+def normalized_walk(top, **kwargs):
     """
-    macOS uses decomposed UTF-8 to store filename. This functions
-    recomposes them on macOS.
+    macOS uses decomposed UTF-8 to store filenames. This functions
+    is like `os.walk` but recomposes those decomposed filenames on
+    macOS
     """
     if 'darwin' == sys.platform:
-        return unicodedata.normalize(
-            'NFC', unicode(fn, 'utf-8')).encode('utf-8')
+        for dirpath, dirnames, filenames in os.walk(top, **kwargs):
+            yield dirpath, dirnames, map(lambda fn: unicodedata.normalize(
+                'NFC', unicode(fn, 'utf-8')).encode('utf-8'), filenames)
     else:
-        return fn
+        for result in os.walk(top, **kwargs):
+            yield result
 
 
 class DeepScan:
@@ -64,12 +67,11 @@ class DeepScan:
         yield_time = time.time()
 
         for (top, regexes) in self.searches.iteritems():
-            for (dirpath, dirnames, filenames) in os.walk(top):
+            for (dirpath, dirnames, filenames) in normalized_walk(top):
                 for regex in regexes:
                     # fixme, don't match filename twice
                     r = re.compile(regex)
                     for filename in filenames:
-                        filename = normalize_filename(filename)
                         if r.search(filename):
                             yield os.path.join(dirpath, filename)
                 if time.time() - yield_time > 0.25:
